@@ -9,3 +9,6 @@
 *.bin
 *.o
 *.dSYM
+/map/glb_15min
+/input
+*.mod
