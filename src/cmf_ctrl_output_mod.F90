@@ -133,7 +133,7 @@ SUBROUTINE CMF_OUTPUT_INIT
 ! -- Called from CMF_DRV_INIT
 USE YOS_CMF_INPUT,           ONLY: NX,NY
 USE YOS_CMF_TIME,            ONLY: ISYYYY, ISMM,   ISDD,   ISHOUR, ISMIN
-USE YOS_CMF_MAP,             ONLY: NSEQMAX,NPTHOUT,NPTHLEV,REGIONTHIS
+USE YOS_CMF_MAP,             ONLY: NSEQALL,NPTHOUT,NPTHLEV,REGIONTHIS
 USE CMF_UTILS_MOD,           ONLY: INQUIRE_FID
 IMPLICIT NONE
 !* Local variables 
@@ -342,7 +342,7 @@ IF( TRIM(VAROUT(JF)%CVNAME)=='pthflw' ) THEN   !! bifurcation channel
   ENDIF
 ELSEIF( LOUTVEC )THEN   !!  1D land only output
   VAROUT(JF)%CFILE=TRIM(COUTDIR)//TRIM(VAROUT(JF)%CVNAME)//TRIM(COUTTAG)//TRIM(CSUFVEC)
-  OPEN(VAROUT(JF)%BINID,FILE=VAROUT(JF)%CFILE,FORM='UNFORMATTED',ACCESS='DIRECT',RECL=4*NSEQMAX)
+  OPEN(VAROUT(JF)%BINID,FILE=VAROUT(JF)%CFILE,FORM='UNFORMATTED',ACCESS='DIRECT',RECL=4*NSEQALL)
   WRITE(LOGNAM,*) "output file opened in unit: ", TRIM(VAROUT(JF)%CFILE), VAROUT(JF)%BINID
 ELSE                   !!  2D default map output
   IF( REGIONTHIS==1 )THEN
@@ -433,7 +433,7 @@ USE CMF_UTILS_MOD,           ONLY: vecD2mapR
 ! save results to output files
 ! -- Called either from "MAIN/Coupler" or CMF_DRV_ADVANCE
 USE YOS_CMF_INPUT,      ONLY: NX, NY, LOUTINI
-USE YOS_CMF_MAP,        ONLY: NSEQMAX, NPTHOUT, NPTHLEV, REGIONTHIS
+USE YOS_CMF_MAP,        ONLY: NSEQALL, NPTHOUT, NPTHLEV, REGIONTHIS
 USE YOS_CMF_TIME,       ONLY: JYYYYMMDD, JHHMM, JHOUR, JMIN, KSTEP
 USE YOS_CMF_PROG,       ONLY: P2RIVSTO,     P2FLDSTO,     P2GDWSTO, &
                             & P2DAMSTO,     P2LEVSTO,     D2COPY       !!! added
@@ -466,10 +466,10 @@ IF ( MOD(JHOUR,IFRQ_OUT)==0 .and. JMIN==0 ) THEN             ! JHOUR: end of tim
   DO JF=1,NVARSOUT
     SELECT CASE (VAROUT(JF)%CVNAME)
       CASE ('rivsto')
-        D2COPY=P2RIVSTO  !! convert Double to Single precision when using SinglePrecisionMode 
+        D2COPY=REAL(P2RIVSTO,KIND=JPRB)  !! convert Double to Single precision when using SinglePrecisionMode 
         D2VEC => D2COPY  !!   (Storage variables are kept as Float64 in SinglePrecisionMode)
       CASE ('fldsto')
-        D2COPY=P2FLDSTO
+        D2COPY=REAL(P2FLDSTO,KIND=JPRB)
         D2VEC => D2COPY
 
       CASE ('rivout')
@@ -517,11 +517,11 @@ IF ( MOD(JHOUR,IFRQ_OUT)==0 .and. JMIN==0 ) THEN             ! JHOUR: end of tim
 
       CASE ('gwsto')
         IF( .not. LGDWDLY ) CYCLE
-        D2COPY=P2GDWSTO
+        D2COPY=REAL(P2GDWSTO,KIND=JPRB)
         D2VEC =>  D2COPY
       CASE ('gdwsto')
         IF( .not. LGDWDLY ) CYCLE
-        D2COPY=P2GDWSTO
+        D2COPY=REAL(P2GDWSTO,KIND=JPRB)
         D2VEC =>  D2COPY
       CASE ('gwout')
         IF( .not. LGDWDLY ) CYCLE
@@ -545,7 +545,7 @@ IF ( MOD(JHOUR,IFRQ_OUT)==0 .and. JMIN==0 ) THEN             ! JHOUR: end of tim
 
       CASE ('damsto')   !!! added
         IF( .not. LDAMOUT ) CYCLE
-        D2COPY=P2DAMSTO
+        D2COPY=REAL(P2DAMSTO,KIND=JPRB)
         D2VEC => D2COPY
       CASE ('daminf')   !!! added
         IF( .not. LDAMOUT ) CYCLE
@@ -553,7 +553,7 @@ IF ( MOD(JHOUR,IFRQ_OUT)==0 .and. JMIN==0 ) THEN             ! JHOUR: end of tim
 
       CASE ('levsto')   !!! added
         IF( .not. LLEVEE ) CYCLE
-        D2COPY=P2LEVSTO
+        D2COPY=REAL(P2LEVSTO,KIND=JPRB)
         D2VEC => D2COPY
       CASE ('levdph')   !!! added
         IF( .not. LLEVEE ) CYCLE
@@ -650,9 +650,9 @@ IMPLICIT NONE
 !*** INPUT
 INTEGER(KIND=JPIM),INTENT(IN)   :: IFN                 !! FILE NUMBER
 INTEGER(KIND=JPIM),INTENT(IN)   :: IREC                !! RECORD
-REAL(KIND=JPRB),INTENT(IN)      :: D2OUTDAT(NSEQMAX,1) !! OUTPUT DATA
+REAL(KIND=JPRB),INTENT(IN)      :: D2OUTDAT(NSEQALL,1) !! OUTPUT DATA
 !*** LOCAL
-REAL(KIND=JPRM)                 :: R2OUTDAT(NSEQMAX,1)
+REAL(KIND=JPRM)                 :: R2OUTDAT(NSEQALL,1)
 !================================================
 R2OUTDAT(:,:)=REAL(D2OUTDAT(:,:))
 WRITE(IFN,REC=IREC) R2OUTDAT
@@ -740,7 +740,7 @@ CONTAINS
 !==========================================================
 SUBROUTINE WRTE_mapR2vecD       !! 1D sequence vector informtion required to convert MPI distributed vector output to 2D map
 USE YOS_CMF_INPUT,      ONLY: TMPNAM
-USE YOS_CMF_MAP,        ONLY: I1SEQX, I1SEQY, NSEQMAX
+USE YOS_CMF_MAP,        ONLY: I1SEQX, I1SEQY, NSEQALL
 USE CMF_UTILS_MOD,      ONLY: INQUIRE_FID
 IMPLICIT NONE
 !* local variable
@@ -752,7 +752,7 @@ IF( LOUTVEC )THEN
   WRITE(LOGNAM,*) "LOUTVEC: write mapR2vecD conversion table", TRIM(CFILE1)
 
   TMPNAM=INQUIRE_FID()
-  OPEN(TMPNAM,FILE=CFILE1,FORM='UNFORMATTED',ACCESS='DIRECT',RECL=4*NSEQMAX)
+  OPEN(TMPNAM,FILE=CFILE1,FORM='UNFORMATTED',ACCESS='DIRECT',RECL=4*NSEQALL)
   WRITE(TMPNAM,REC=1) I1SEQX
   WRITE(TMPNAM,REC=2) I1SEQY
   CLOSE(TMPNAM)

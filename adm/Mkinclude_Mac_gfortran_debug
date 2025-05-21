@@ -12,7 +12,7 @@ CP = /bin/cp
 # DATM=-DNoAtom_CMF        : avoid OMP ATOMIC calculation (bit identical simulation)
 #======================================
 
-#DCDF=-DUseCDF_CMF
+DCDF=-DUseCDF_CMF
 #DMPI=-DUseMPI_CMF
 DSINGLE=-DSinglePrec_CMF
 #DATM=-DNoAtom_CMF
@@ -20,19 +20,26 @@ DSINGLE=-DSinglePrec_CMF
 CFLAGS=$(DMPI) $(DCDF) $(DATM) $(DSINGLE)
 
 #======================================
-# gfortran Linux
-#======================================
+# gfortran Mac OSX 
 
-#INC = -I/usr/local/include 
-#LIB = -L/usr/local/lib -lnetcdff
+# without netCDF
+#INC = -I/opt/homebrew/include 
+#LIB = -L/opt/homebrew/lib 
+
+# with netCDF
+INC = -I/opt/homebrew/include 
+LIB = -L/opt/homebrew/lib -lnetcdff
 
 #==============================
 # FCMP: main program (src/), FC: pre/post process (map/ etc/)
 FCMP = gfortran -fopenmp
+#FCMP = mpif90 -fopenmp
+#FCMP = mpif90
 FC = gfortran
 
 LFLAGS =
-FFLAGS = -O3 -Wall -cpp -ffree-line-length-none -fimplicit-none -ftree-vectorize 
-
-# debug mode
 #FFLAGS = -O3 -Wall -cpp -ffree-line-length-none -fimplicit-none -ftree-vectorize -fopt-info-vec
+
+# Debug mode.
+# note: underflow is unavoidable
+  FFLAGS = -g  -Wall -cpp -ffree-line-length-none -fimplicit-none -ffpe-trap=invalid,zero,overflow -fbounds-check -fbacktrace
