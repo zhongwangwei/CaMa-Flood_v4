@@ -16,6 +16,7 @@ module cmf_ctrl_sedinp_mod
 #endif
   use PARKIND1,                only: JPIM, JPRB, JPRM
   use YOS_CMF_INPUT,           only: LOGNAM
+  use CMF_CTRL_OUTPUT_MOD,     only: LOUTCDF      ! LOUTCDF sourced from here
   use YOS_CMF_MAP,             only: NSEQALL, NSEQMAX, D2GRAREA
   use CMF_CTRL_FORCING_MOD,    only: INPX, INPY, INPA
 
@@ -86,13 +87,60 @@ contains
   end subroutine
 
   subroutine read_slope
-    use YOS_CMF_INPUT,         only: NX,NY, NLFP
+    use YOS_CMF_INPUT,         only: NX,NY, NLFP ! LOUTCDF available from module level
     use YOS_CMF_MAP,           only: REGIONTHIS
+#ifdef UseMPI_CMF
+    use YOS_CMF_MAP,           only: MPI_COMM_CAMA ! Ensure MPI_COMM_CAMA is available if used
+#endif
+#ifdef UseCDF_CMF
+    use netcdf
+    use CMF_UTILS_MOD,         only: NCERROR
+#endif
 
     implicit none
     integer                       :: ierr, tmpnam, i
     real(kind=jprm)               :: r2temp(nx,ny)
+#ifdef UseCDF_CMF
+    real(kind=jprm)               :: r3temp(nx,ny,NLFP) ! For reading 3D NetCDF variable
+    integer                       :: ncid, varid
+#endif
+
     allocate(d2slope(NSEQMAX,NLFP))
+
+#ifdef UseCDF_CMF
+    if (LOUTCDF) then
+      ! NetCDF reading logic for cslope
+      if (REGIONTHIS == 1) then
+        write(LOGNAM,*) 'Reading slope from NetCDF file: ', trim(cslope)
+        call NCERROR( nf90_open(trim(cslope), NF90_NOWRITE, ncid), 'opening cslope file' )
+        call NCERROR( nf90_inq_varid(ncid, "slope", varid), 'getting slope varid' )
+        call NCERROR( nf90_get_var(ncid, varid, r3temp), 'reading slope' )
+        call NCERROR( nf90_close(ncid), 'closing cslope file' )
+      endif
+#ifdef UseMPI_CMF
+      call MPI_Bcast(r3temp, NX*NY*NLFP, MPI_REAL4, 0, MPI_COMM_CAMA, ierr)
+#endif
+      do i = 1, NLFP
+        r2temp(:,:) = r3temp(:,:,i)
+        call mapR2vecD(r2temp,d2slope(:,i))
+      enddo
+    else
+      ! Binary reading logic if LOUTCDF is false (but UseCDF_CMF is defined)
+      if ( REGIONTHIS == 1 ) then
+        tmpnam = INQUIRE_FID()
+        open(tmpnam,file=cslope,form='unformatted',access='direct',recl=4*NX*NY)
+      endif
+      do i = 1, NLFP
+        if ( REGIONTHIS == 1 ) read(tmpnam,rec=i) r2temp
+#ifdef UseMPI_CMF
+        call MPI_Bcast(r2temp,NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+        call mapR2vecD(r2temp,d2slope(:,i))
+      enddo
+      if ( REGIONTHIS == 1 ) close(tmpnam)
+    endif
+#else
+    ! Existing binary reading logic for cslope (if UseCDF_CMF is not defined)
     if ( REGIONTHIS == 1 ) then
       tmpnam = INQUIRE_FID()
       open(tmpnam,file=cslope,form='unformatted',access='direct',recl=4*NX*NY)
@@ -100,11 +148,12 @@ contains
     do i = 1, NLFP
       if ( REGIONTHIS == 1 ) read(tmpnam,rec=i) r2temp
 #ifdef UseMPI_CMF
-      call MPI_Bcast(r2temp(1,1),NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+      call MPI_Bcast(r2temp,NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
 #endif
       call mapR2vecD(r2temp,d2slope(:,i))
     enddo
     if ( REGIONTHIS == 1 ) close(tmpnam)
+#endif
   end subroutine read_slope
   
 end subroutine sediment_input_init
@@ -113,9 +162,13 @@ end subroutine sediment_input_init
 !==========================================================
 subroutine cmf_sed_forcing
   ! read forcing from file
-  use YOS_CMF_INPUT,           only: TMPNAM,NXIN,NYIN,DTIN
+  use YOS_CMF_INPUT,           only: TMPNAM,NXIN,NYIN,DTIN ! LOUTCDF available at module level
   use YOS_CMF_TIME,            only: IYYYY, IMM, IDD, IHOUR, IMIN
-  use CMF_UTILS_MOD,           only: CONV_END,INQUIRE_FID
+  use CMF_UTILS_MOD,           only: INQUIRE_FID 
+#ifdef UseCDF_CMF
+  use netcdf
+  use CMF_UTILS_MOD,           only: NCERROR       ! Add NCERROR for NetCDF
+#endif
   
   implicit none
   save
@@ -126,6 +179,10 @@ subroutine cmf_sed_forcing
   character(len=256)              :: cifname             !! input file
   character(len=256)              :: cdate               !!
   real(kind=jprm)                 :: r2tmp(nxin,nyin)
+#ifdef UseCDF_CMF
+  integer                         :: ncid, varid
+  integer                         :: start_indices(3), count_indices(3)
+#endif
   
   !*** 1. calculate irec for sub-daily precipitation
   isec    = ihour*60*60+imin*60   !! current second in a day
@@ -134,13 +191,31 @@ subroutine cmf_sed_forcing
   !*** 2. set file name
   write(cdate,'(i4.4,i2.2,i2.2)') iyyyy,imm,idd
   cifname=trim(sedinput_dir)//'/'//trim(sedinput_pre)//trim(cdate)//trim(sedinput_suf)
-  write(LOGNAM,*) "cmf::sed_forcing_get_bin:",trim(cifname)
+  ! write(LOGNAM,*) "cmf::sed_forcing_get:",trim(cifname) ! Message updated below based on type
 
   !*** 3. open & read forcing data
-  tmpnam=inquire_fid()
-  open(tmpnam,file=cifname,form='unformatted',access='direct',recl=4*nxin*nyin)
-  read(tmpnam,rec=irecinp) r2tmp
-  close(tmpnam)
+#ifdef UseCDF_CMF
+  if (LOUTCDF) then
+    write(LOGNAM,*) "cmf::sed_forcing_get_netcdf:",trim(cifname)
+    call NCERROR( nf90_open(trim(cifname), NF90_NOWRITE, ncid), 'opening sediment forcing file: '//trim(cifname) )
+    call NCERROR( nf90_inq_varid(ncid, "sediment_forcing", varid), 'getting sediment_forcing varid' )
+    ! Assuming NetCDF variable is var(NXIN, NYIN, time_dim)
+    ! IRECINP is 1-based for record number
+    start_indices = (/1, 1, IRECINP/)
+    count_indices = (/NXIN, NYIN, 1/)
+    call NCERROR( nf90_get_var(ncid, varid, r2tmp, start=start_indices, count=count_indices), 'reading sediment_forcing' )
+    call NCERROR( nf90_close(ncid), 'closing sediment forcing file' )
+  else
+#endif
+    ! Binary reading logic
+    write(LOGNAM,*) "cmf::sed_forcing_get_bin:",trim(cifname)
+    tmpnam=inquire_fid()
+    open(tmpnam,file=cifname,form='unformatted',access='direct',recl=4*nxin*nyin)
+    read(tmpnam,rec=irecinp) r2tmp
+    close(tmpnam)
+#ifdef UseCDF_CMF
+  endif
+#endif
 
   !*** 5. conduct necessary conversion
   call sedinp_interp(r2tmp,d2temp)   ! interpolate forcing grid to model grid

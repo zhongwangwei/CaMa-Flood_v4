@@ -16,8 +16,13 @@ module CMF_CTRL_SED_MOD
 #endif
   use PARKIND1,                only: JPIM, JPRB, JPRM
   use YOS_CMF_INPUT,           only: LOGNAM, NX, NY
+  use CMF_CTRL_OUTPUT_MOD,     only: LOUTCDF      ! LOUTCDF sourced from here
   use YOS_CMF_MAP,             only: MPI_COMM_CAMA, NSEQALL, NSEQMAX, REGIONTHIS
   use CMF_UTILS_MOD,           only: INQUIRE_FID
+#ifdef UseCDF_CMF
+  use netcdf
+  use CMF_UTILS_MOD,           only: NCERROR
+#endif
   use yos_cmf_sed,             only: lyrdph, nsed, totlyrnum, sDiam
 
   implicit none
@@ -26,6 +31,10 @@ module CMF_CTRL_SED_MOD
   character(len=256)              :: csedfrc
   character(len=256)              :: sedD
   namelist/sediment_map/ crocdph,sedD,csedfrc
+
+  REAL(KIND=JPRB), ALLOCATABLE :: d2rocdph(:)
+  SAVE d2rocdph
+
 contains
 !####################################################################
 ! -- cmf_sed_nmlist
@@ -116,8 +125,15 @@ contains
 
     implicit none
     integer(kind=JPIM)              :: i, ierr, ised, iseq, tmpnam
-    real(kind=JPRM)                 :: r2temp(NX,NY), sTmp1(nsed)
+    real(kind=JPRM)                 :: r2temp(NX,NY)
+#ifdef UseCDF_CMF
+    real(kind=JPRM)                 :: r3temp(NX,NY,nsed)
+    integer(kind=JPIM)              :: ncid, varid
+#endif
     character(len=256)              :: ctmp(20)
+
+    allocate(d2rocdph(NSEQMAX))
+    d2rocdph(:) = 0.0_JPRB ! Initialize
 
     !------------------------!
     ! get sediment diameters !
@@ -148,6 +164,38 @@ contains
     ! read sediment fraction file !
     !-----------------------------!
     allocate(d2sedfrc(NSEQMAX,nsed))
+#ifdef UseCDF_CMF
+    if (LOUTCDF) then ! Assuming LOUTCDF controls NetCDF input as well
+      if (REGIONTHIS == 1) then
+        write(LOGNAM,*) 'Reading sediment fraction from NetCDF file: ', trim(csedfrc)
+        call NCERROR( nf90_open(trim(csedfrc), NF90_NOWRITE, ncid), 'opening csedfrc file' )
+        call NCERROR( nf90_inq_varid(ncid, "sedfrc", varid), 'getting sedfrc varid' )
+        call NCERROR( nf90_get_var(ncid, varid, r3temp), 'reading sedfrc' )
+        call NCERROR( nf90_close(ncid), 'closing csedfrc file' )
+      endif
+#ifdef UseMPI_CMF
+      ! Broadcast the whole 3D array at once
+      call MPI_Bcast(r3temp(1,1,1),NX*NY*nsed,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+      do ised = 1, nsed
+        r2temp(:,:) = r3temp(:,:,ised) ! Extract 2D slice
+        call mapR2vecD(r2temp,d2sedfrc(:,ised))
+      enddo
+    else ! Fallback to binary if LOUTCDF is false but UseCDF_CMF is defined
+      if ( REGIONTHIS == 1 ) then
+        tmpnam = INQUIRE_FID()
+        open(tmpnam,file=csedfrc,form='unformatted',access='direct',recl=4*NX*NY)
+      endif
+      do ised = 1, nsed
+        if ( REGIONTHIS == 1 ) read(tmpnam,rec=ised) r2temp
+#ifdef UseMPI_CMF
+        call MPI_Bcast(r2temp(1,1),NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+        call mapR2vecD(r2temp,d2sedfrc(:,ised))
+      enddo
+      if ( REGIONTHIS == 1 ) close(tmpnam)
+    endif
+#else  // UseCDF_CMF is not defined, so use binary reading
     if ( REGIONTHIS == 1 ) then
       tmpnam = INQUIRE_FID()
       open(tmpnam,file=csedfrc,form='unformatted',access='direct',recl=4*NX*NY)
@@ -160,6 +208,7 @@ contains
       call mapR2vecD(r2temp,d2sedfrc(:,ised))
     enddo
     if ( REGIONTHIS == 1 ) close(tmpnam)
+#endif
    
     ! adjust if any fractions are negative or if sum is not equal to 1
     if ( nsed == 1 ) then
@@ -175,6 +224,48 @@ contains
       enddo
       !$omp end parallel do
     endif
+
+    !------------------------!
+    ! read rock depth file   !
+    !------------------------!
+#ifdef UseCDF_CMF
+    if (LOUTCDF) then ! Assuming LOUTCDF controls NetCDF input as well
+      if (REGIONTHIS == 1) then
+        write(LOGNAM,*) 'Reading rock depth from NetCDF file: ', trim(crocdph)
+        call NCERROR( nf90_open(trim(crocdph), NF90_NOWRITE, ncid), 'opening crocdph file' )
+        call NCERROR( nf90_inq_varid(ncid, "rockdepth", varid), 'getting rockdepth varid' )
+        call NCERROR( nf90_get_var(ncid, varid, r2temp), 'reading rockdepth' )
+        call NCERROR( nf90_close(ncid), 'closing crocdph file' )
+      endif
+#ifdef UseMPI_CMF
+      call MPI_Bcast(r2temp(1,1),NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+      call mapR2vecD(r2temp,d2rocdph)
+    else ! Fallback to binary if LOUTCDF is false but UseCDF_CMF is defined
+      if (REGIONTHIS == 1) then
+        tmpnam = INQUIRE_FID()
+        open(tmpnam,file=crocdph,form='unformatted',access='direct',recl=4*NX*NY)
+        read(tmpnam,rec=1) r2temp
+        close(tmpnam)
+      endif
+#ifdef UseMPI_CMF
+      call MPI_Bcast(r2temp(1,1),NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+      call mapR2vecD(r2temp,d2rocdph)
+    endif
+#else  // UseCDF_CMF is not defined, so use binary reading
+    if (REGIONTHIS == 1) then
+      tmpnam = INQUIRE_FID()
+      open(tmpnam,file=crocdph,form='unformatted',access='direct',recl=4*NX*NY)
+      read(tmpnam,rec=1) r2temp
+      close(tmpnam)
+    endif
+#ifdef UseMPI_CMF
+    call MPI_Bcast(r2temp(1,1),NX*NY,mpi_real4,0,MPI_COMM_CAMA,ierr)
+#endif
+    call mapR2vecD(r2temp,d2rocdph)
+#endif
+
   end subroutine sediment_map_init
 !==================================
   subroutine sediment_vars_init

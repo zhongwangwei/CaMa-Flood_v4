@@ -45,6 +45,16 @@ cmf_ctrl_maps_mod.o     \
 cmf_ctrl_vars_mod.o     \
 cmf_ctrl_nmlist_mod.o   \
 \
+! Sediment modules \
+yos_cmf_sed.o \
+sed_utils_mod.o \
+cmf_calc_sedpar_mod.o \
+cmf_calc_sedflw_mod.o \
+cmf_ctrl_sedinp_mod.o \
+cmf_ctrl_sedrest_mod.o \
+cmf_ctrl_sedout_mod.o \
+cmf_ctrl_sed_mod.o \
+\
 cmf_drv_control_mod.o   \
 cmf_drv_advance_mod.o 
 
@@ -52,7 +62,7 @@ cmf_drv_advance_mod.o
 #*** suffix rule
 .SUFFIXES : .o .F90
 .F90.o:
-	$(FCMP) ${FFLAGS} -c ${INC} $(MODS) ${CFLAGS} -c $<
+	$(FCMP) ${FFLAGS} -c ${INC} $(MODS) ${CFLAGS} -Dsediment -c $<
 src: $(OBJECTS)
 	ar -rv libcama.a $(OBJECTS)
 
