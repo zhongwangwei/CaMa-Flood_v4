@@ -62,7 +62,7 @@ cmf_drv_advance_mod.o
 #*** suffix rule
 .SUFFIXES : .o .F90
 .F90.o:
-	$(FCMP) ${FFLAGS} -c ${INC} $(MODS) ${CFLAGS} -Dsediment -c $<
+	$(FCMP) ${FFLAGS} -c ${INC} $(MODS) ${CFLAGS} -c $<
 src: $(OBJECTS)
 	ar -rv libcama.a $(OBJECTS)
 

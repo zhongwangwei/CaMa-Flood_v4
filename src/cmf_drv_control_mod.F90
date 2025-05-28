@@ -38,7 +38,7 @@ CONTAINS
 SUBROUTINE CMF_DRV_INPUT
 ! Read setting from namelist ("input_flood.nam" as default)
 ! -- Called from CMF_DRV_INIT
-USE YOS_CMF_INPUT,           ONLY: LLOGOUT, LOGNAM, CLOGOUT, CSETFILE, LSEALEV
+USE YOS_CMF_INPUT,           ONLY: LLOGOUT, LOGNAM, CLOGOUT, CSETFILE, LSEALEV, LSEDIMENT ! Added LSEDIMENT
 USE YOS_CMF_INPUT,           ONLY: LDAMOUT, LLEVEE, LOUTPUT, LTRACE
 USE CMF_CTRL_NMLIST_MOD,     ONLY: CMF_CONFIG_NMLIST, CMF_CONFIG_CHECK
 USE CMF_CTRL_TIME_MOD,       ONLY: CMF_TIME_NMLIST
@@ -51,10 +51,8 @@ USE CMF_CTRL_TRACER_MOD,     ONLY: CMF_TRACER_NMLIST
 USE CMF_CTRL_OUTPUT_MOD,     ONLY: CMF_OUTPUT_NMLIST
 USE CMF_CTRL_MAPS_MOD,       ONLY: CMF_MAPS_NMLIST
 USE CMF_UTILS_MOD,           ONLY: INQUIRE_FID
-#ifdef sediment
-USE YOS_CMF_INPUT,           ONLY: LSEDOUT
-USE cmf_ctrl_sed_mod,        ONLY: cmf_sed_nmlist
-#endif
+! LSEDIMENT is imported from YOS_CMF_INPUT above
+USE cmf_ctrl_sed_mod,        ONLY: cmf_sed_nmlist      ! Moved from IF block
 IMPLICIT NONE
 !* local
 CHARACTER(LEN=8)              :: CREG                 !! 
@@ -118,11 +116,9 @@ IF( LTRACE )THEN
   CALL CMF_TRACER_NMLIST
 ENDIF
 
-#ifdef sediment
-IF( LSEDOUT )THEN
+IF( LSEDIMENT )THEN ! Was #ifdef sediment and IF( LSEDOUT )
   CALL cmf_sed_nmlist
 ENDIF
-#endif
 
 WRITE(LOGNAM,*) "CMF::DRV_INPUT: end reading namelist"
 
@@ -144,7 +140,7 @@ END SUBROUTINE CMF_DRV_INPUT
 SUBROUTINE CMF_DRV_INIT(LECMF2LAKEC)
 ! Initialize CaMa-Flood
 ! -- Called from CMF_DRV_INIT
-USE YOS_CMF_INPUT,           ONLY: LRESTART, LSTOONLY, LOUTPUT, LSEALEV, LDAMOUT, LLEVEE, LTRACE, LOUTINI
+USE YOS_CMF_INPUT,           ONLY: LRESTART, LSTOONLY, LOUTPUT, LSEALEV, LDAMOUT, LLEVEE, LTRACE, LOUTINI, LSEDIMENT ! Added LSEDIMENT
 ! init routines
 USE CMF_CTRL_TIME_MOD,       ONLY: CMF_TIME_INIT
 USE CMF_CTRL_MAPS_MOD,       ONLY: CMF_RIVMAP_INIT,  CMF_TOPO_INIT
@@ -156,10 +152,8 @@ USE CMF_CTRL_RESTART_MOD,    ONLY: CMF_RESTART_INIT
 USE CMF_CTRL_DAMOUT_MOD,     ONLY: CMF_DAMOUT_INIT
 USE CMF_CTRL_LEVEE_MOD,      ONLY: CMF_LEVEE_INIT
 USE CMF_CTRL_TRACER_MOD,     ONLY: CMF_TRACER_INIT, CMF_TRACER_OUTPUT_INIT, CMF_TRACER_RESTART_INIT
-#ifdef sediment
-USE YOS_CMF_INPUT,           ONLY: LSEDOUT
-USE cmf_ctrl_sed_mod,        ONLY: cmf_sed_init
-#endif
+! LSEDIMENT is imported from YOS_CMF_INPUT above
+USE cmf_ctrl_sed_mod,        ONLY: cmf_sed_init        ! Moved from IF block
 ! import
 USE CMF_CTRL_PHYSICS_MOD,    ONLY: CMF_PHYSICS_FLDSTG
 USE CMF_OPT_OUTFLW_MOD,      ONLY: CMF_CALC_OUTPRE
@@ -246,12 +240,10 @@ IF( LTRACE )THEN
   IF( LRESTART) CALL CMF_TRACER_RESTART_INIT
 ENDIF
 
-#ifdef sediment
 !*** 4e. Optional sediment initialization
-IF( LSEDOUT )THEN
+IF( LSEDIMENT )THEN ! Was #ifdef sediment and IF( LSEDOUT )
   CALL cmf_sed_init
 ENDIF
-#endif
 
 !================================================
 !** v4.03 CALC_FLDSTG moved to the top of CTRL_PHYSICS for strict restart configulation (Hatono & Yamazaki)
@@ -291,15 +283,13 @@ END SUBROUTINE CMF_DRV_INIT
 !####################################################################
 SUBROUTINE CMF_DRV_END
 ! Finalize CaMa-Flood
-USE YOS_CMF_INPUT,           ONLY: LOUTPUT, LSEALEV, LTRACE
+USE YOS_CMF_INPUT,           ONLY: LOUTPUT, LSEALEV, LTRACE, LSEDIMENT ! Added LSEDIMENT
 USE CMF_CTRL_OUTPUT_MOD,     ONLY: CMF_OUTPUT_END
 USE CMF_CTRL_FORCING_MOD,    ONLY: CMF_FORCING_END
 USE CMF_CTRL_BOUNDARY_MOD,   ONLY: CMF_BOUNDARY_END
 USE CMF_CTRL_TRACER_MOD,     ONLY: CMF_TRACER_OUTPUT_END
-#ifdef sediment
-USE YOS_CMF_INPUT,           ONLY: LSEDOUT
-USE cmf_ctrl_sedout_mod,     ONLY: sediment_output_end
-#endif
+! LSEDIMENT is imported from YOS_CMF_INPUT above
+USE cmf_ctrl_sedout_mod,     ONLY: sediment_output_end ! Moved from IF block
 !$ USE OMP_LIB    
 IMPLICIT NONE 
 !==========================================================
@@ -310,9 +300,7 @@ CALL CMF_FORCING_END
 IF( LOUTPUT )THEN
   CALL CMF_OUTPUT_END
   IF( LTRACE ) CALL CMF_TRACER_OUTPUT_END
-#ifdef sediment
-  IF( LSEDOUT ) call sediment_output_end
-#endif
+  IF( LSEDIMENT ) call sediment_output_end ! Was #ifdef sediment and IF( LSEDOUT )
 ENDIF
 IF( LSEALEV ) THEN
   CALL CMF_BOUNDARY_END

@@ -18,7 +18,7 @@ MODULE CMF_CALC_DIAG_MOD
 ! See the License for the specific language governing permissions and limitations under the License.
 !==========================================================
 USE PARKIND1,           ONLY: JPIM, JPRM, JPRB
-USE YOS_CMF_INPUT,      ONLY: LOGNAM
+USE YOS_CMF_INPUT,      ONLY: LOGNAM, LSEDIMENT ! Added LSEDIMENT
 USE YOS_CMF_INPUT,      ONLY: DT, LPTHOUT,  LDAMOUT,  LWEVAP
 USE YOS_CMF_MAP,        ONLY: NSEQALL,      NPTHOUT,      NPTHLEV
 USE YOS_CMF_PROG,       ONLY: D2RIVOUT,     D2FLDOUT,     D1PTHFLW,     D2GDWRTN, &
@@ -31,10 +31,9 @@ USE YOS_CMF_DIAG,       ONLY: D2RIVOUT_aAVG, D2FLDOUT_aAVG, D1PTHFLW_aAVG, D2GDW
 USE YOS_CMF_DIAG,       ONLY: D2RIVOUT_oAVG, D2FLDOUT_oAVG, D1PTHFLW_oAVG, D2GDWRTN_oAVG, D2RUNOFF_oAVG, D2ROFSUB_oAVG, &
                             & D2OUTFLW_oAVG, D2RIVVEL_oAVG, D2PTHOUT_oAVG, D2DAMINF_oAVG, D2WEVAPEX_oAVG, &
                             & D2OUTFLW_oMAX, D2RIVDPH_oMAX, D2STORGE_oMAX, NADD_out
-#ifdef sediment
-USE YOS_CMF_INPUT,      ONLY: LSEDOUT
+! LSEDIMENT is imported from YOS_CMF_INPUT at the module level
+! Sediment specific variables from yos_cmf_sed, used if LSEDIMENT is true
 USE yos_cmf_sed,        ONLY: d2rivout_sed, d2rivvel_sed, sadd_riv
-#endif
 IMPLICIT NONE
 CONTAINS 
 !####################################################################
@@ -148,18 +147,18 @@ END DO
 !$OMP END PARALLEL DO SIMD
 
 
-#ifdef sediment
-!calculate average rivout and rivvel for sediment timestep
-IF( LSEDOUT )THEN
-  sadd_riv = sadd_riv + DT
-  !$OMP PARALLEL DO SIMD
-  DO ISEQ=1, NSEQALL
-    d2rivout_sed(ISEQ) = d2rivout_sed(ISEQ)+D2RIVOUT(ISEQ,1)*DT
-    d2rivvel_sed(ISEQ) = d2rivvel_sed(ISEQ)+D2RIVVEL(ISEQ,1)*DT
-  END DO
-  !$OMP END PARALLEL DO SIMD
+IF( LSEDIMENT )THEN
+  !calculate average rivout and rivvel for sediment timestep
+  IF( LSEDIMENT )THEN  ! This inner IF was LSEDOUT, now LSEDIMENT
+    sadd_riv = sadd_riv + DT
+    !$OMP PARALLEL DO SIMD
+    DO ISEQ=1, NSEQALL
+      d2rivout_sed(ISEQ) = d2rivout_sed(ISEQ)+D2RIVOUT(ISEQ,1)*DT
+      d2rivvel_sed(ISEQ) = d2rivvel_sed(ISEQ)+D2RIVVEL(ISEQ,1)*DT
+    END DO
+    !$OMP END PARALLEL DO SIMD
+  ENDIF
 ENDIF
-#endif
 
 END SUBROUTINE CMF_DIAG_AVEMAX_ADPSTP
 !####################################################################

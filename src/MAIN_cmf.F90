@@ -25,10 +25,12 @@ USE CMF_CTRL_TRACER_MOD,     ONLY: CMF_TRACER_FORC_GET, CMF_TRACER_FORC_INTERP
 USE CMF_CTRL_MPI_MOD,        ONLY: CMF_MPI_INIT, CMF_MPI_END
 #endif
 !** sediment options**
-#ifdef sediment
-USE YOS_CMF_INPUT,           ONLY: LSEDOUT
-USE cmf_ctrl_sedinp_mod,     ONLY: cmf_sed_forcing
-#endif
+! LSEDIMENT is now imported from YOS_CMF_INPUT at the top program level
+! The following use statements are conditional on LSEDIMENT at compile time if -Dsediment is set
+! or at runtime if LSEDIMENT is used in IF blocks.
+! For runtime control, these USE statements would typically not be inside the IF(LSEDIMENT) block
+! but the cmf_sed_forcing call is conditional.
+USE cmf_ctrl_sedinp_mod,     ONLY: cmf_sed_forcing  ! This USE is fine here if cmf_sed_forcing is only called if LSEDIMENT is true
 !** tracer options**
 !****************************
 IMPLICIT NONE
@@ -72,12 +74,10 @@ DO ISTEP=1,NSTEPS,ISTEPADV
   CALL CMF_DRV_ADVANCE(ISTEPADV)
 
 
-#ifdef sediment
   !*  2d Prepare forcing for optional sediment transport in stand-alone mode
-  IF ( LSEDOUT ) THEN
+  IF ( LSEDIMENT ) THEN
     CALL cmf_sed_forcing
   ENDIF
-#endif
 
 ENDDO
 !============================
